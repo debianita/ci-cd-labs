@@ -53,6 +53,10 @@ jobs:
       - name: Start LocalStack
         run: |
           docker run -d -p 4566:4566 -p 4571:4571 localstack/localstack
+      
+      - name: Install awslocal
+        run: |
+          pip install awscli-local
 
       - name: Deploy to LocalStack - Production environment (If a new release was published from the main branch)
         if: github.event_name == 'release' && github.event.action == 'published' && github.event.release.target_commitish == 'main'
