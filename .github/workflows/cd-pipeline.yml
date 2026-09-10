@@ -38,12 +38,10 @@ jobs:
 
       - name: Authenticate for Docker Hub
         id: docker-auth
-        env:
-          D_USER: ${{secrets.DOCKER_USER}}
-          D_PASS: ${{secrets.DOCKER_PASSWORD}}
-        run: |
-          echo "$D_PASS" | docker login -u "$D_USER" --password-stdin
-
+        uses: docker/login-action@v2
+        with:
+          username: ${{secrets.DOCKER_USER}}
+          password: ${{secrets.DOCKER_PASSWORD}}
       - name: Build and tag Image
         run: |
           docker build -t ${{env.IMAGE}} .
