@@ -1,4 +1,4 @@
-name: CD Pipeline to Google Cloud Run (staging and production)
+name: CD Pipeline to LocalStack (staging and production)
 on:
   push:
     branches:
@@ -23,56 +23,73 @@ jobs:
 
       - name: Test application
         run: npm test
+
   build:
     needs: test
     runs-on: ubuntu-latest
-    name: Setup project, Authorize GitHub Actions to GCP and Docker Hub, and deploy
+    name: Build Docker image and deploy to LocalStack
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Authenticate for GCP
-        id: gcp-auth
-        uses: google-github-actions/auth@v0
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v0
-
       - name: Authenticate for Docker Hub
         id: docker-auth
-        env:
-          D_USER: ${{secrets.DOCKER_USER}}
-          D_PASS: ${{secrets.DOCKER_PASSWORD}}
-        run: |
-          docker login -u $D_USER -p $D_PASS
+        uses: docker/login-action@v2
+        with:
+          username: ${{secrets.DOCKER_USER}}
+          password: ${{secrets.DOCKER_PASSWORD}}
       - name: Build and tag Image
         run: |
           docker build -t ${{env.IMAGE}} .
+
       - name: Push the image to Docker hub
         run: |
           docker push ${{env.IMAGE}}
-      - name: Enable the Billing API
+
+      - name: Start LocalStack
         run: |
-          gcloud services enable cloudbilling.googleapis.com --project=${{secrets.GCP_PROJECT_ID}}
-      - name: Deploy to GCP Run - Production environment (If a new release was published from the master branch)
+          docker run -d -p 4566:4566 -p 4571:4571 localstack/localstack
+
+     - name: Wait for LocalStack
+        run: |
+          echo "Waiting for LocalStack to be ready..."
+          sleep 20
+          aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 ls || true
+ 
+      - name: Install awslocal
+        run: |
+          pip install awscli-local
+
+      - name: Deploy to LocalStack - Production environment (If a new release was published from the main branch)
         if: github.event_name == 'release' && github.event.action == 'published' && github.event.release.target_commitish == 'main'
         run: |
-          gcloud run deploy ${{vars.GCR_PROJECT_NAME}} \
-          --region ${{vars.GCR_REGION}} \
-          --image ${{env.IMAGE}} \
-          --platform "managed" \
-          --allow-unauthenticated \
-          --tag production \
-      - name: Deploy to GCP Run - Staging environment
+          echo "Deploying to LocalStack Production"
+          awslocal ecs create-cluster --cluster-name myapp-prod
+          awslocal ecs register-task-definition \
+            --family myapp-prod \
+            --network-mode bridge \
+            --container-definitions '[{"name":"myapp","image":"${{env.IMAGE}}","memory":512,"cpu":256,"essential":true,"portMappings":[{"containerPort":5001,"hostPort":5001}]}]'
+          awslocal ecs create-service \
+            --cluster myapp-prod \
+            --service-name myapp-service-prod \
+            --task-definition myapp-prod \
+            --desired-count 1
+
+      - name: Deploy to LocalStack - Staging environment
         if: github.ref != 'refs/heads/main'
         run: |
-          echo "Deploying to staging environment"
-          # Deploy service with to staging environment
-          gcloud run deploy ${{vars.GCR_STAGING_PROJECT_NAME}} \
-          --region ${{vars.GCR_REGION}} \
-          --image ${{env.IMAGE}} \
-          --platform "managed" \
-          --allow-unauthenticated \
-          --tag staging \
+          echo "Deploying to LocalStack Staging"
+          awslocal ecs create-cluster --cluster-name myapp-staging
+          awslocal ecs register-task-definition \
+            --family myapp-staging \
+            --network-mode bridge \
+            --container-definitions '[{"name":"myapp","image":"${{env.IMAGE}}","memory":512,"cpu":256,"essential":true,"portMappings":[{"containerPort":5001,"hostPort":5001}]}]'
+          awslocal ecs create-service \
+            --cluster myapp-staging \
+            --service-name myapp-service-staging \
+            --task-definition myapp-staging \
+            --desired-count 1
