@@ -49,11 +49,11 @@ jobs:
       - name: Push the image to Docker hub
         run: docker push ${{env.IMAGE}}
 
-      # Acción oficial de LocalStack
+      # Acción correcta de LocalStack
       - name: Setup LocalStack
-        uses: localstack/setup-localstack@v1
+        uses: localstack/actions/setup-localstack@v0.1.4
         with:
-          install-awslocal: false   # no usamos awslocal
+          install-awslocal: false   # usamos aws directamente
           image-tag: latest
 
       - name: Wait for LocalStack
