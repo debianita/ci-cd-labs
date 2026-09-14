@@ -13,7 +13,7 @@ env:
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   AWS_DEFAULT_REGION: us-east-1
-  LOCALSTACK_HOST: localhost:4566
+  LOCALSTACK_HOST: http://localhost:4566
 
 jobs:
   test:
@@ -65,7 +65,6 @@ jobs:
         run: |
           echo "Waiting for LocalStack to be ready..."
           sleep 20
-	  curl http://localhost:4566/_localstack/health || true
           aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 ls || true
 
       - name: Deploy to LocalStack - Production environment (If a new release was published from the main branch)
