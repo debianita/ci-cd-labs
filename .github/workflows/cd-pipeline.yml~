@@ -14,7 +14,6 @@ env:
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   AWS_DEFAULT_REGION: us-east-1
-  LOCALSTACK_HOST: localhost:4566   # sin http://
 
 jobs:
   test:
@@ -50,16 +49,17 @@ jobs:
       - name: Push the image to Docker hub
         run: docker push ${{env.IMAGE}}
 
-      - name: Start LocalStack
-        run: docker run -d -p 4566:4566 -p 4571:4571 localstack/localstack
-
-      - name: Install AWS CLI + awslocal
-        run: pip install awscli awscli-local
+      # Acción oficial de LocalStack
+      - name: Setup LocalStack
+        uses: localstack/setup-localstack@v1
+        with:
+          install-awslocal: false   # no usamos awslocal
+          image-tag: latest
 
       - name: Wait for LocalStack
         run: |
           echo "Esperando LocalStack..."
-          sleep 20
+          sleep 40
           curl http://localhost:4566/_localstack/health || true
           aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 ls || true
 
@@ -67,12 +67,12 @@ jobs:
         if: github.event_name == 'release' && github.event.action == 'published' && github.event.release.target_commitish == 'main'
         run: |
           echo "Deploying to LocalStack Production"
-          awslocal ecs create-cluster --cluster-name myapp-prod
-          awslocal ecs register-task-definition \
+          aws --endpoint-url=http://localhost:4566 ecs create-cluster --cluster-name myapp-prod
+          aws --endpoint-url=http://localhost:4566 ecs register-task-definition \
             --family myapp-prod \
             --network-mode bridge \
             --container-definitions '[{"name":"myapp","image":"${{env.IMAGE}}","memory":512,"cpu":256,"essential":true,"portMappings":[{"containerPort":5001,"hostPort":5001}]}]'
-          awslocal ecs create-service \
+          aws --endpoint-url=http://localhost:4566 ecs create-service \
             --cluster myapp-prod \
             --service-name myapp-service-prod \
             --task-definition myapp-prod \
@@ -82,12 +82,12 @@ jobs:
         if: github.ref != 'refs/heads/main'
         run: |
           echo "Deploying to LocalStack Staging"
-          awslocal ecs create-cluster --cluster-name myapp-staging
-          awslocal ecs register-task-definition \
+          aws --endpoint-url=http://localhost:4566 ecs create-cluster --cluster-name myapp-staging
+          aws --endpoint-url=http://localhost:4566 ecs register-task-definition \
             --family myapp-staging \
             --network-mode bridge \
             --container-definitions '[{"name":"myapp","image":"${{env.IMAGE}}","memory":512,"cpu":256,"essential":true,"portMappings":[{"containerPort":5001,"hostPort":5001}]}]'
-          awslocal ecs create-service \
+          aws --endpoint-url=http://localhost:4566 ecs create-service \
             --cluster myapp-staging \
             --service-name myapp-service-staging \
             --task-definition myapp-staging \
